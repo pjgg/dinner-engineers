@@ -1,0 +1,72 @@
+name: "Find the date"
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 23 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  validate-format:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [ 21 ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+          check-latest: true
+      - name: format
+        run: mvn -V -B formatter:validate verify -DskipTests
+      - name: Tar Maven Repo
+        shell: bash
+        run: tar -I 'pigz -9' -cf maven-repo.tgz -C ~ .m2/repository
+      - name: Persist Maven Repo
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-repo
+          path: maven-repo.tgz
+  linux-build-jvm:
+    name: PR - Linux - JVM build - Latest Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: validate-format
+    strategy:
+      matrix:
+        java: [ 21 ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup git username
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install JDK {{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+          check-latest: true
+          cache: 'maven'
+      - name: Download Maven Repo
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-repo
+          path: .
+      - name: Extract Maven Repo
+        shell: bash
+        run: tar -xzf maven-repo.tgz -C ~
+      - name: Build with Maven
+        run: mvn -V -B -am clean verify -Ddata.folder=availability
+      - name: Commit and push
+        run: |
+          git add .
+          git commit -m "nightly build report" || echo "No changes to commit"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

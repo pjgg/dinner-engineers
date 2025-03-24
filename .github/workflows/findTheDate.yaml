@@ -65,8 +65,8 @@ jobs:
         run: mvn -V -B -am clean verify -Ddata.folder=availability
       - name: Commit and push
         run: |
-          git add .
-          git commit -m "nightly build report" || echo "No changes to commit"
+          git add docs/index.html
+          git status --porcelain | grep -q "docs/index.html" && git commit -m "nightly build report" || echo "No changes to commit"
           git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
